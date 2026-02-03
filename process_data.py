@@ -36,7 +36,6 @@ def process_dataframe(df, file_name, relative_path):
     if not all(col in df.columns for col in required_cols):
         return None
 
-    # Filtro para despesas com eventos/sinistros (Classe 4 geralmente)
     mask = df['Descricao'].astype(str).str.contains('EVENTO|SINISTRO|DESPESA', case=False, na=False)
     filtered_df = df[mask].copy()
 
@@ -46,12 +45,10 @@ def process_dataframe(df, file_name, relative_path):
     filtered_df['ValorDespesas'] = filtered_df['ValorDespesas'].apply(clean_currency)
     
     if 'Trimestre' not in filtered_df.columns:
-        # Tenta extrair do caminho do arquivo (ex: raw_data/2025/Q3/...)
         parts = relative_path.split(os.sep)
         if len(parts) >= 3:
             year = parts[-3]
             quarter_str = parts[-2] 
-            # Normaliza para data aproximada do fim do trimestre para consistência
             q_map = {'Q1': '03-31', 'Q2': '06-30', 'Q3': '09-30', 'Q4': '12-31'}
             suffix = q_map.get(quarter_str, '01-01')
             filtered_df['Trimestre'] = f"{year}-{suffix}"
@@ -86,9 +83,9 @@ def extract_and_process():
                                             processed_df.to_csv(output_path, index=False, encoding='utf-8')
                                             print(f"Processado: {output_name}")
                                     except Exception as e:
-                                        print(f"Erro ao ler {member} em {file}: {e}")
+                                        print(f"Erro ao ler {member}: {e}")
                 except Exception as e:
-                    print(f"Erro ao abrir zip {file}: {e}")
+                    print(f"Erro no zip {file}: {e}")
 
 def main():
     extract_and_process()
