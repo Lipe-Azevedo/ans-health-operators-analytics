@@ -6,3 +6,4 @@ venv/
 raw_data/
 *.zip
 *.csv
+staging_data/
