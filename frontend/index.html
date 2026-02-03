@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ANS Analytics - Vue.js</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .card { box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: none; }
+        .card-header { background-color: #0d6efd; color: white; font-weight: bold; }
+        .loading { text-align: center; padding: 40px; font-weight: bold; color: #666; }
+        .clickable { cursor: pointer; }
+        .clickable:hover { background-color: #f1f1f1; }
+        .stat-value { font-size: 1.8rem; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="app" class="container py-4">
+        <header class="mb-4 text-center">
+            <h1 class="text-primary fw-bold">Painel de Operadoras ANS</h1>
+            <p class="text-muted">Consulta de Despesas e Indicadores Financeiros</p>
+        </header>
+
+        <ul class="nav nav-pills nav-fill mb-4 bg-white p-2 rounded shadow-sm">
+            <li class="nav-item">
+                <a class="nav-link" :class="{active: currentView === 'lista'}" href="#" @click.prevent="currentView = 'lista'">📋 Lista de Operadoras</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" :class="{active: currentView === 'dashboard'}" href="#" @click.prevent="loadDashboard">📊 Dashboard Analítico</a>
+            </li>
+        </ul>
+
+        <div v-if="loading" class="loading">
+            <div class="spinner-border text-primary" role="status"></div>
+            <div class="mt-2">Carregando dados...</div>
+        </div>
+
+        <div v-if="currentView === 'lista' && !loading">
+            <div class="row mb-4">
+                <div class="col-md-8 offset-md-2">
+                    <div class="input-group input-group-lg">
+                        <input type="text" v-model="searchQuery" @keyup.enter="fetchOperadoras(1)" class="form-control" placeholder="🔍 Buscar por Razão Social ou CNPJ...">
+                        <button class="btn btn-primary" @click="fetchOperadoras(1)">Buscar</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Registro ANS</th>
+                                    <th>CNPJ</th>
+                                    <th>Razão Social</th>
+                                    <th>UF</th>
+                                    <th class="text-end">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="op in operadoras" :key="op.registro_ans" class="clickable" @click="verDetalhes(op.cnpj)">
+                                    <td>{{ op.registro_ans }}</td>
+                                    <td>{{ op.cnpj }}</td>
+                                    <td>{{ op.razao_social }}</td>
+                                    <td>{{ op.uf }}</td>
+                                    <td class="text-end">
+                                        <button class="btn btn-sm btn-outline-primary">Ver Detalhes</button>
+                                    </td>
+                                </tr>
+                                <tr v-if="operadoras.length === 0">
+                                    <td colspan="5" class="text-center py-4">Nenhuma operadora encontrada. Tente outra busca.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <nav v-if="totalPages > 1" class="mt-4">
+                <ul class="pagination justify-content-center">
+                    <li class="page-item" :class="{disabled: page <= 1}">
+                        <button class="page-link" @click="fetchOperadoras(page - 1)">Anterior</button>
+                    </li>
+                    <li class="page-item disabled"><span class="page-link">{{ page }} de {{ totalPages }}</span></li>
+                    <li class="page-item" :class="{disabled: page >= totalPages}">
+                        <button class="page-link" @click="fetchOperadoras(page + 1)">Próxima</button>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+
+        <div v-show="currentView === 'dashboard'" class="row g-4">
+            <div class="col-md-6">
+                <div class="card h-100 border-start border-4 border-success">
+                    <div class="card-body text-center">
+                        <h5 class="text-muted text-uppercase small">Total de Despesas</h5>
+                        <div class="stat-value text-success">{{ formatMoney(stats.total_despesas) }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100 border-start border-4 border-info">
+                    <div class="card-body text-center">
+                        <h5 class="text-muted text-uppercase small">Média Geral</h5>
+                        <div class="stat-value text-info">{{ formatMoney(stats.media_despesas) }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">Top 5 Operadoras (Maiores Despesas)</div>
+                    <div class="card-body">
+                        <canvas id="chartTop5" height="100"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="selectedOperadora" class="modal fade show" style="display: block; background: rgba(0,0,0,0.5)" tabindex="-1">
+            <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header bg-light">
+                        <h5 class="modal-title">{{ selectedOperadora.razao_social }}</h5>
+                        <button type="button" class="btn-close" @click="selectedOperadora = null"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row mb-4">
+                            <div class="col-md-6"><strong>CNPJ:</strong> {{ selectedOperadora.cnpj }}</div>
+                            <div class="col-md-6"><strong>Modalidade:</strong> {{ selectedOperadora.modalidade }}</div>
+                        </div>
+                        
+                        <h6 class="border-bottom pb-2 mb-3">Histórico de Eventos/Sinistros</h6>
+                        
+                        <div v-if="despesasHistorico.length > 0" class="table-responsive">
+                            <table class="table table-sm table-striped">
+                                <thead class="table-dark"><tr><th>Período</th><th>Conta</th><th>Valor</th></tr></thead>
+                                <tbody>
+                                    <tr v-for="(d, index) in despesasHistorico" :key="index">
+                                        <td>{{ d.ano }}/{{ d.trimestre }}</td>
+                                        <td><small>{{ d.descricao }}</small></td>
+                                        <td class="text-nowrap">{{ formatMoney(d.valor_despesas) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div v-else class="alert alert-info">Nenhuma despesa registrada para esta operadora.</div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @click="selectedOperadora = null">Fechar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted } = Vue;
+        // Aponta para o Backend na porta 8000
+        const API_URL = 'http://localhost:8000/api';
+
+        createApp({
+            setup() {
+                const operadoras = ref([]);
+                const stats = ref({});
+                const page = ref(1);
+                const totalPages = ref(1);
+                const loading = ref(false);
+                const searchQuery = ref('');
+                const currentView = ref('lista');
+                const selectedOperadora = ref(null);
+                const despesasHistorico = ref([]);
+                let chartInstance = null;
+
+                const fetchOperadoras = async (p = 1) => {
+                    loading.value = true;
+                    try {
+                        const res = await fetch(`${API_URL}/operadoras?page=${p}&limit=10&search=${searchQuery.value}`);
+                        if(!res.ok) throw new Error("Erro na API");
+                        const data = await res.json();
+                        operadoras.value = data.data;
+                        page.value = data.page;
+                        totalPages.value = Math.ceil(data.total / data.limit);
+                    } catch (e) {
+                        console.error(e);
+                        alert('Erro ao conectar com o servidor. Verifique se o Backend está rodando.');
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                const verDetalhes = async (cnpj) => {
+                    if (!cnpj) return;
+                    loading.value = true;
+                    try {
+                        const resOp = await fetch(`${API_URL}/operadoras/${cnpj}`);
+                        selectedOperadora.value = await resOp.json();
+                        
+                        const resDesp = await fetch(`${API_URL}/operadoras/${cnpj}/despesas`);
+                        despesasHistorico.value = await resDesp.json();
+                    } catch (e) {
+                        alert('Erro ao carregar detalhes.');
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                const loadDashboard = async () => {
+                    currentView.value = 'dashboard';
+                    loading.value = true;
+                    try {
+                        const res = await fetch(`${API_URL}/estatisticas`);
+                        stats.value = await res.json();
+                        setTimeout(() => renderChart(stats.value.top_5_operadoras), 100);
+                    } catch (e) {
+                        console.error(e);
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                const renderChart = (top5) => {
+                    const ctx = document.getElementById('chartTop5');
+                    if (!ctx) return;
+                    if (chartInstance) chartInstance.destroy();
+                    
+                    chartInstance = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: top5.map(d => d.razao_social.substring(0, 15) + '...'),
+                            datasets: [{
+                                label: 'Total de Despesas (R$)',
+                                data: top5.map(d => d.total_despesas),
+                                backgroundColor: '#0d6efd',
+                                borderRadius: 4
+                            }]
+                        },
+                        options: { responsive: true, plugins: { legend: { display: false } } }
+                    });
+                };
+
+                const formatMoney = (val) => {
+                    if (val === null || val === undefined) return 'R$ 0,00';
+                    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+                };
+
+                onMounted(() => fetchOperadoras());
+
+                return {
+                    operadoras, stats, page, totalPages, loading, searchQuery, currentView,
+                    selectedOperadora, despesasHistorico,
+                    fetchOperadoras, verDetalhes, loadDashboard, formatMoney
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
