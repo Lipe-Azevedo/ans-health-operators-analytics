@@ -1,0 +1,8 @@
+raw_data/
+staging_data/
+venv/
+.git/
+__pycache__/
+*.zip
+*.csv
+.env
