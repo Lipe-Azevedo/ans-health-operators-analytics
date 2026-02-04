@@ -1,0 +1,7 @@
+body { background-color: #f8f9fa; }
+.card { box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: none; }
+.card-header { background-color: #0d6efd; color: white; font-weight: bold; }
+.loading { text-align: center; padding: 40px; font-weight: bold; color: #666; }
+.clickable { cursor: pointer; }
+.clickable:hover { background-color: #f1f1f1; }
+.stat-value { font-size: 1.8rem; font-weight: bold; }
