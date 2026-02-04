@@ -5,28 +5,14 @@ import os
 
 DB_URL = "postgresql://postgres:ans_password@db:5432/postgres"
 DATA_FILE = os.path.join("output", "consolidado_despesas_enriquecido.csv")
-AGG_FILE = "despesas_agregadas.csv" 
+AGG_FILE = os.path.join("output", "despesas_agregadas.csv")
 
 def get_engine():
     try:
         return create_engine(DB_URL)
     except Exception as e:
-        print(f"Erro: {e}")
+        print(f"Erro ao conectar no banco: {e}")
         sys.exit(1)
-
-def create_schema(engine):
-    ddl_ops = "CREATE TABLE IF NOT EXISTS operadoras (registro_ans INT PRIMARY KEY, cnpj VARCHAR(20), razao_social VARCHAR(255), modalidade VARCHAR(100), uf VARCHAR(50));"
-    ddl_desp = "CREATE TABLE IF NOT EXISTS despesas (id SERIAL PRIMARY KEY, registro_ans INT, trimestre DATE, ano INT, conta VARCHAR(50), descricao VARCHAR(255), valor_despesas DECIMAL(15,2), FOREIGN KEY (registro_ans) REFERENCES operadoras(registro_ans));"
-    ddl_agg = "CREATE TABLE IF NOT EXISTS despesas_agregadas (id SERIAL PRIMARY KEY, razao_social VARCHAR(255), uf VARCHAR(50), total_despesas DECIMAL(15,2), media_trimestral DECIMAL(15,2), desvio_padrao DECIMAL(15,2));"
-
-    with engine.connect() as conn:
-        conn.execute(text("DROP TABLE IF EXISTS despesas CASCADE;"))
-        conn.execute(text("DROP TABLE IF EXISTS operadoras CASCADE;"))
-        conn.execute(text("DROP TABLE IF EXISTS despesas_agregadas CASCADE;"))
-        conn.execute(text(ddl_ops))
-        conn.execute(text(ddl_desp))
-        conn.execute(text(ddl_agg))
-        conn.commit()
 
 def clean_cnpj(value):
     try:
@@ -38,19 +24,28 @@ def clean_cnpj(value):
 
 def import_data(engine):
     if not os.path.exists(DATA_FILE):
-        print(f"Erro: {DATA_FILE} nao encontrado. Rode enrich_data.py primeiro.")
+        print(f"Erro: {DATA_FILE} nao encontrado. O ETL rodou corretamente?")
         sys.exit(1)
 
+    print("1. Limpando tabelas (TRUNCATE)...")
+    with engine.connect() as conn:
+        conn.execute(text("TRUNCATE TABLE despesas, operadoras, despesas_agregadas CASCADE;"))
+        conn.commit()
+
     try:
+        print("2. Lendo arquivos CSV...")
         df_full = pd.read_csv(DATA_FILE, encoding='utf-8')
+        
         if os.path.exists(AGG_FILE):
             df_agg = pd.read_csv(AGG_FILE, encoding='utf-8')
         else:
             df_agg = pd.DataFrame()
+            
     except Exception as e:
         print(f"Erro leitura CSV: {e}")
         sys.exit(1)
 
+    print("3. Inserindo Operadoras...")
     df_ops = df_full[['RegistroANS', 'CNPJ', 'RazaoSocial', 'Modalidade', 'UF']].drop_duplicates('RegistroANS').copy()
     df_ops.columns = ['registro_ans', 'cnpj', 'razao_social', 'modalidade', 'uf']
     
@@ -62,6 +57,7 @@ def import_data(engine):
     
     df_ops.to_sql('operadoras', engine, if_exists='append', index=False)
 
+    print("4. Inserindo Despesas...")
     df_fin = df_full[['RegistroANS', 'Trimestre', 'Ano', 'Conta', 'Descricao', 'ValorDespesas']].copy()
     df_fin.columns = ['registro_ans', 'trimestre', 'ano', 'conta', 'descricao', 'valor_despesas']
     
@@ -71,11 +67,11 @@ def import_data(engine):
     df_fin.to_sql('despesas', engine, if_exists='append', index=False)
 
     if not df_agg.empty:
+        print("5. Inserindo Agregados...")
         df_agg.columns = ['razao_social', 'uf', 'total_despesas', 'media_trimestral', 'desvio_padrao']
         df_agg.to_sql('despesas_agregadas', engine, if_exists='append', index=False)
 
 if __name__ == "__main__":
     engine = get_engine()
-    create_schema(engine)
     import_data(engine)
-    print("Sucesso")
+    print(">>> Sucesso! Importação concluída.")
