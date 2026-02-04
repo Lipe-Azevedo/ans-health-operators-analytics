@@ -65,8 +65,9 @@ def main():
     merged['CNPJ'] = merged['CNPJ_Cadastre'].fillna(merged['CNPJ'])
     merged['RazaoSocial'] = merged['RazaoSocial_Cadastre'].fillna(merged['RazaoSocial'])
     merged['StatusCadastro'] = merged['CNPJ_Cadastre'].apply(lambda x: 'ENCONTRADO' if pd.notna(x) else 'NAO_ENCONTRADO')
-    merged['UF'].fillna('DESCONHECIDO', inplace=True)
-    merged['Modalidade'].fillna('DESCONHECIDO', inplace=True)
+    merged['UF'] = merged['UF'].fillna('DESCONHECIDO')
+    merged['Modalidade'] = merged['Modalidade'].fillna('DESCONHECIDO')
+
 
     cols = ['RegistroANS', 'CNPJ', 'RazaoSocial', 'Modalidade', 'UF', 'Trimestre', 'Ano', 'ValorDespesas', 'Descricao', 'Conta', 'StatusCadastro']
     
