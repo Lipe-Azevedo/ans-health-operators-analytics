@@ -2,10 +2,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 from typing import Optional
+import os
 
 app = FastAPI()
 
-origins = ["*"]  
+origins = ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -14,7 +15,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_URL = "postgresql://postgres:ans_password@db:5432/postgres"
+DB_URL = os.getenv("DB_URL", "postgresql://postgres:ans_password@db:5432/postgres")
 engine = create_engine(DB_URL)
 
 @app.get("/api/operadoras")

@@ -3,7 +3,7 @@ from sqlalchemy import create_engine, text
 import sys
 import os
 
-DB_URL = "postgresql://postgres:ans_password@db:5432/postgres"
+DB_URL = os.getenv("DB_URL", "postgresql://postgres:ans_password@db:5432/postgres")
 DATA_FILE = os.path.join("output", "consolidado_despesas_enriquecido.csv")
 AGG_FILE = os.path.join("output", "despesas_agregadas.csv")
 
