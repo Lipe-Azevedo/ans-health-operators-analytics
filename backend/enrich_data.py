@@ -6,8 +6,14 @@ import sys
 import re
 
 BASE_DIR_URL = "https://dadosabertos.ans.gov.br/FTP/PDA/operadoras_de_plano_de_saude_ativas/"
-INPUT_FILE = "consolidado_despesas.csv"
-OUTPUT_FILE = "consolidado_despesas_enriquecido.csv"
+STAGING_DIR = "staging_data"
+OUTPUT_DIR = "output"
+INPUT_FILE = os.path.join(STAGING_DIR, "consolidado_despesas.csv")
+OUTPUT_FILE = os.path.join(OUTPUT_DIR, "consolidado_despesas_enriquecido.csv")
+
+def setup_output():
+    if not os.path.exists(OUTPUT_DIR):
+        os.makedirs(OUTPUT_DIR)
 
 def get_csv_url():
     try:
@@ -37,6 +43,7 @@ def normalize_cadastre_columns(df):
     return df
 
 def main():
+    setup_output()
     if not os.path.exists(INPUT_FILE):
         print(f"Erro: {INPUT_FILE} nao encontrado.")
         sys.exit(1)
@@ -64,7 +71,7 @@ def main():
     cols = ['RegistroANS', 'CNPJ', 'RazaoSocial', 'Modalidade', 'UF', 'Trimestre', 'Ano', 'ValorDespesas', 'Descricao', 'Conta', 'StatusCadastro']
     
     merged[cols].to_csv(OUTPUT_FILE, index=False, encoding='utf-8')
-    print(f"Sucesso: {OUTPUT_FILE} gerado.")
+    print(f"Sucesso: {OUTPUT_FILE}")
 
 if __name__ == "__main__":
     main()

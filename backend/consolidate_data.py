@@ -3,11 +3,14 @@ import pandas as pd
 import zipfile
 
 STAGING_DIR = "staging_data"
-OUTPUT_FILE = "consolidado_despesas.csv"
-ZIP_FILE = "consolidado_despesas.zip"
+OUTPUT_DIR = "output"
+OUTPUT_FILE = os.path.join(STAGING_DIR, "consolidado_despesas.csv")
 
 def process_consolidation():
-    all_files = [os.path.join(STAGING_DIR, f) for f in os.listdir(STAGING_DIR) if f.endswith('.csv')]
+    if not os.path.exists(STAGING_DIR): return
+    
+    all_files = [os.path.join(STAGING_DIR, f) for f in os.listdir(STAGING_DIR) if f.endswith('.csv') and 'consolidado' not in f]
+    
     if not all_files: return
 
     df_list = []
@@ -32,8 +35,7 @@ def process_consolidation():
     cols = ['RegistroANS', 'CNPJ', 'RazaoSocial', 'Trimestre', 'Ano', 'ValorDespesas', 'Descricao', 'Conta']
     
     full_df[cols].to_csv(OUTPUT_FILE, index=False, encoding='utf-8')
-    with zipfile.ZipFile(ZIP_FILE, 'w', zipfile.ZIP_DEFLATED) as z:
-        z.write(OUTPUT_FILE)
+    print(f"Gerado: {OUTPUT_FILE}")
 
 if __name__ == "__main__":
     process_consolidation()

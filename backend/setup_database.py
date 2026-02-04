@@ -1,14 +1,17 @@
 import pandas as pd
 from sqlalchemy import create_engine, text
 import sys
+import os
 
 DB_URL = "postgresql://postgres:ans_password@db:5432/postgres"
+DATA_FILE = os.path.join("output", "consolidado_despesas_enriquecido.csv")
+AGG_FILE = "despesas_agregadas.csv" 
 
 def get_engine():
     try:
         return create_engine(DB_URL)
     except Exception as e:
-        print(f"Erro ao criar engine: {e}")
+        print(f"Erro: {e}")
         sys.exit(1)
 
 def create_schema(engine):
@@ -34,15 +37,20 @@ def clean_cnpj(value):
         return None
 
 def import_data(engine):
-    print("Lendo arquivos CSV...")
-    try:
-        df_full = pd.read_csv("consolidado_despesas_enriquecido.csv", encoding='utf-8')
-        df_agg = pd.read_csv("despesas_agregadas.csv", encoding='utf-8')
-    except Exception as e:
-        print(f"Erro ao ler CSVs: {e}")
+    if not os.path.exists(DATA_FILE):
+        print(f"Erro: {DATA_FILE} nao encontrado. Rode enrich_data.py primeiro.")
         sys.exit(1)
 
-    print("Importando Operadoras...")
+    try:
+        df_full = pd.read_csv(DATA_FILE, encoding='utf-8')
+        if os.path.exists(AGG_FILE):
+            df_agg = pd.read_csv(AGG_FILE, encoding='utf-8')
+        else:
+            df_agg = pd.DataFrame()
+    except Exception as e:
+        print(f"Erro leitura CSV: {e}")
+        sys.exit(1)
+
     df_ops = df_full[['RegistroANS', 'CNPJ', 'RazaoSocial', 'Modalidade', 'UF']].drop_duplicates('RegistroANS').copy()
     df_ops.columns = ['registro_ans', 'cnpj', 'razao_social', 'modalidade', 'uf']
     
@@ -54,7 +62,6 @@ def import_data(engine):
     
     df_ops.to_sql('operadoras', engine, if_exists='append', index=False)
 
-    print("Importando Despesas...")
     df_fin = df_full[['RegistroANS', 'Trimestre', 'Ano', 'Conta', 'Descricao', 'ValorDespesas']].copy()
     df_fin.columns = ['registro_ans', 'trimestre', 'ano', 'conta', 'descricao', 'valor_despesas']
     
@@ -63,15 +70,12 @@ def import_data(engine):
     
     df_fin.to_sql('despesas', engine, if_exists='append', index=False)
 
-    print("Importando Agregados...")
-    df_agg.columns = ['razao_social', 'uf', 'total_despesas', 'media_trimestral', 'desvio_padrao']
-    df_agg.to_sql('despesas_agregadas', engine, if_exists='append', index=False)
+    if not df_agg.empty:
+        df_agg.columns = ['razao_social', 'uf', 'total_despesas', 'media_trimestral', 'desvio_padrao']
+        df_agg.to_sql('despesas_agregadas', engine, if_exists='append', index=False)
 
-def main():
+if __name__ == "__main__":
     engine = get_engine()
     create_schema(engine)
     import_data(engine)
-    print("Sucesso: Banco de dados configurado e populado.")
-
-if __name__ == "__main__":
-    main()
+    print("Sucesso")

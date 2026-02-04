@@ -7,15 +7,30 @@ import io
 RAW_DIR = "raw_data"
 STAGING_DIR = "staging_data"
 
-def normalize_columns(df):
-    df.columns = [c.upper().strip() for c in df.columns]
-    col_map = {
-        'DATA': 'Trimestre', 'DT_FIM_EXERCICIO': 'Trimestre',
-        'REG_ANS': 'RegistroANS', 'CD_CONTA_CONTABIL': 'Conta',
-        'DESCRICAO': 'Descricao', 'VL_SALDO_FINAL': 'ValorDespesas'
-    }
-    df.rename(columns=col_map, inplace=True)
-    return df
+def setup_directories():
+    if os.path.exists(STAGING_DIR):
+        shutil.rmtree(STAGING_DIR)
+    os.makedirs(STAGING_DIR)
+
+def read_file_content(f):
+    content = f.read()
+    for encoding in ['utf-8-sig', 'utf-8', 'latin1']:
+        try:
+            return content.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return content.decode('latin1', errors='replace')
+
+def parse_csv(text_content):
+    if not text_content: return None
+    
+    for sep in [';', ',']:
+        try:
+            df = pd.read_csv(io.StringIO(text_content), sep=sep, on_bad_lines='skip')
+            if len(df.columns) > 1: return df
+        except:
+            continue
+    return None
 
 def clean_currency(value):
     try:
@@ -25,24 +40,15 @@ def clean_currency(value):
     except:
         return 0.0
 
-def read_csv_force_utf8(f):
-    content = f.read()
-    text_content = content.decode('utf-8-sig', errors='replace')
-    
-    try:
-        return pd.read_csv(io.StringIO(text_content), sep=';', on_bad_lines='skip')
-    except:
-        pass
-    
-    try:
-        return pd.read_csv(io.StringIO(text_content), sep=',', on_bad_lines='skip')
-    except:
-        return None
+def transform_dataframe(df, relative_path):
+    df.columns = [c.upper().strip() for c in df.columns]
+    col_map = {
+        'DATA': 'Trimestre', 'DT_FIM_EXERCICIO': 'Trimestre',
+        'REG_ANS': 'RegistroANS', 'CD_CONTA_CONTABIL': 'Conta',
+        'DESCRICAO': 'Descricao', 'VL_SALDO_FINAL': 'ValorDespesas'
+    }
+    df.rename(columns=col_map, inplace=True)
 
-def process_dataframe(df, file_name, relative_path):
-    if df is None: return None
-    df = normalize_columns(df)
-    
     required = ['RegistroANS', 'Conta', 'ValorDespesas', 'Descricao']
     if not all(c in df.columns for c in required): return None
 
@@ -61,30 +67,39 @@ def process_dataframe(df, file_name, relative_path):
 
     return filtered[['RegistroANS', 'Conta', 'Descricao', 'ValorDespesas', 'Trimestre']]
 
-def main():
-    if os.path.exists(STAGING_DIR): shutil.rmtree(STAGING_DIR)
-    os.makedirs(STAGING_DIR)
+def process_zip_member(z, member, root):
+    if not member.lower().endswith(('.csv', '.txt')): return
 
+    with z.open(member) as f:
+        try:
+            print(f"Processando: {member}")
+            text_content = read_file_content(f)
+            df = parse_csv(text_content)
+            
+            if df is None: return
+
+            processed_df = transform_dataframe(df, root)
+            
+            if processed_df is not None:
+                safe_name = member.replace('/', '_').replace('\\', '_').split('.')[0]
+                out_path = os.path.join(STAGING_DIR, f"{safe_name}_processed.csv")
+                processed_df.to_csv(out_path, index=False, encoding='utf-8')
+        except Exception as e:
+            print(f"Erro em {member}: {e}")
+
+def main():
+    setup_directories()
+    
     for root, _, files in os.walk(RAW_DIR):
         for file in files:
             if file.endswith('.zip'):
+                zip_path = os.path.join(root, file)
                 try:
-                    with zipfile.ZipFile(os.path.join(root, file), 'r') as z:
+                    with zipfile.ZipFile(zip_path, 'r') as z:
                         for member in z.namelist():
-                            if member.lower().endswith(('.csv', '.txt')):
-                                with z.open(member) as f:
-                                    try:
-                                        print(f"Processando: {member}")
-                                        df = read_csv_force_utf8(f)
-                                        processed = process_dataframe(df, member, root)
-                                        
-                                        if processed is not None:
-                                            out_name = f"{member.replace('/', '_').split('.')[0]}_processed.csv"
-                                            processed.to_csv(os.path.join(STAGING_DIR, out_name), index=False, encoding='utf-8')
-                                    except Exception as e:
-                                        print(f"Erro {member}: {e}")
+                            process_zip_member(z, member, root)
                 except Exception as e:
-                    print(f"Erro zip {file}: {e}")
+                    print(f"Erro no ZIP {file}: {e}")
 
 if __name__ == "__main__":
     main()
