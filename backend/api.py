@@ -22,11 +22,13 @@ def list_operadoras(page: int = 1, limit: int = 10, search: Optional[str] = None
     offset = (page - 1) * limit
     params = {'limit': limit, 'offset': offset}
     
-    where_clause = ""
+    base_where = "WHERE cnpj IS NOT NULL AND cnpj != ''"
+    
     if search:
-        # Busca insensível a maiusculas/minusculas
-        where_clause = "WHERE razao_social ILIKE :search OR cnpj ILIKE :search"
+        where_clause = f"{base_where} AND (razao_social ILIKE :search OR cnpj ILIKE :search)"
         params['search'] = f"%{search}%"
+    else:
+        where_clause = base_where
     
     query_total = text(f"SELECT COUNT(*) FROM operadoras {where_clause}")
     query_data = text(f"""
@@ -60,7 +62,6 @@ def get_operadora(cnpj: str):
 
 @app.get("/api/operadoras/{cnpj}/despesas")
 def get_operadora_despesas(cnpj: str):
-    # Busca registro_ans pelo CNPJ
     q_reg = text("SELECT registro_ans FROM operadoras WHERE cnpj = :cnpj")
     
     with engine.connect() as conn:

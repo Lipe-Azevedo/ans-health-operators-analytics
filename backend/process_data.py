@@ -2,93 +2,89 @@ import os
 import zipfile
 import pandas as pd
 import shutil
+import io
 
 RAW_DIR = "raw_data"
 STAGING_DIR = "staging_data"
 
 def normalize_columns(df):
     df.columns = [c.upper().strip() for c in df.columns]
-    
     col_map = {
-        'DATA': 'Trimestre',
-        'DT_FIM_EXERCICIO': 'Trimestre',
-        'REG_ANS': 'RegistroANS',
-        'CD_CONTA_CONTABIL': 'Conta',
-        'DESCRICAO': 'Descricao',
-        'VL_SALDO_FINAL': 'ValorDespesas'
+        'DATA': 'Trimestre', 'DT_FIM_EXERCICIO': 'Trimestre',
+        'REG_ANS': 'RegistroANS', 'CD_CONTA_CONTABIL': 'Conta',
+        'DESCRICAO': 'Descricao', 'VL_SALDO_FINAL': 'ValorDespesas'
     }
-    
     df.rename(columns=col_map, inplace=True)
     return df
 
 def clean_currency(value):
     try:
-        if isinstance(value, (int, float)):
-            return float(value)
-        return float(str(value).replace('.', '').replace(',', '.'))
+        if isinstance(value, (int, float)): return float(value)
+        val_str = str(value).replace('R$', '').strip()
+        return float(val_str.replace('.', '').replace(',', '.'))
     except:
         return 0.0
 
+def read_csv_force_utf8(f):
+    content = f.read()
+    text_content = content.decode('utf-8-sig', errors='replace')
+    
+    try:
+        return pd.read_csv(io.StringIO(text_content), sep=';', on_bad_lines='skip')
+    except:
+        pass
+    
+    try:
+        return pd.read_csv(io.StringIO(text_content), sep=',', on_bad_lines='skip')
+    except:
+        return None
+
 def process_dataframe(df, file_name, relative_path):
+    if df is None: return None
     df = normalize_columns(df)
     
-    required_cols = ['RegistroANS', 'Conta', 'ValorDespesas', 'Descricao']
-    if not all(col in df.columns for col in required_cols):
-        return None
+    required = ['RegistroANS', 'Conta', 'ValorDespesas', 'Descricao']
+    if not all(c in df.columns for c in required): return None
 
-    mask = df['Descricao'].astype(str).str.contains('EVENTO|SINISTRO|DESPESA', case=False, na=False)
-    filtered_df = df[mask].copy()
+    mask = df['Descricao'].astype(str).str.contains('EVENTO|SINISTRO|DESPESA|PROVIS', case=False, na=False)
+    filtered = df[mask].copy()
+    if filtered.empty: return None
 
-    if filtered_df.empty:
-        return None
-
-    filtered_df['ValorDespesas'] = filtered_df['ValorDespesas'].apply(clean_currency)
+    filtered['ValorDespesas'] = filtered['ValorDespesas'].apply(clean_currency)
     
-    if 'Trimestre' not in filtered_df.columns:
+    if 'Trimestre' not in filtered.columns:
         parts = relative_path.split(os.sep)
         if len(parts) >= 3:
-            year = parts[-3]
-            quarter_str = parts[-2] 
-            q_map = {'Q1': '03-31', 'Q2': '06-30', 'Q3': '09-30', 'Q4': '12-31'}
-            suffix = q_map.get(quarter_str, '01-01')
-            filtered_df['Trimestre'] = f"{year}-{suffix}"
+            year, quarter = parts[-3], parts[-2]
+            q_map = {'Q1':'03-31', 'Q2':'06-30', 'Q3':'09-30', 'Q4':'12-31'}
+            filtered['Trimestre'] = f"{year}-{q_map.get(quarter, '01-01')}"
 
-    return filtered_df[['RegistroANS', 'Conta', 'Descricao', 'ValorDespesas', 'Trimestre']]
+    return filtered[['RegistroANS', 'Conta', 'Descricao', 'ValorDespesas', 'Trimestre']]
 
-def extract_and_process():
-    if os.path.exists(STAGING_DIR):
-        shutil.rmtree(STAGING_DIR)
+def main():
+    if os.path.exists(STAGING_DIR): shutil.rmtree(STAGING_DIR)
     os.makedirs(STAGING_DIR)
 
     for root, _, files in os.walk(RAW_DIR):
         for file in files:
             if file.endswith('.zip'):
-                zip_path = os.path.join(root, file)
                 try:
-                    with zipfile.ZipFile(zip_path, 'r') as z:
+                    with zipfile.ZipFile(os.path.join(root, file), 'r') as z:
                         for member in z.namelist():
-                            if member.lower().endswith(('.csv', '.txt', '.xlsx')):
+                            if member.lower().endswith(('.csv', '.txt')):
                                 with z.open(member) as f:
                                     try:
-                                        if member.lower().endswith('.xlsx'):
-                                            df = pd.read_excel(f)
-                                        else:
-                                            df = pd.read_csv(f, sep=';', encoding='latin1', on_bad_lines='skip')
+                                        print(f"Processando: {member}")
+                                        df = read_csv_force_utf8(f)
+                                        processed = process_dataframe(df, member, root)
                                         
-                                        processed_df = process_dataframe(df, member, root)
-                                        
-                                        if processed_df is not None:
-                                            output_name = f"{member.replace('/', '_').split('.')[0]}_processed.csv"
-                                            output_path = os.path.join(STAGING_DIR, output_name)
-                                            processed_df.to_csv(output_path, index=False, encoding='utf-8')
-                                            print(f"Processado: {output_name}")
+                                        if processed is not None:
+                                            out_name = f"{member.replace('/', '_').split('.')[0]}_processed.csv"
+                                            processed.to_csv(os.path.join(STAGING_DIR, out_name), index=False, encoding='utf-8')
                                     except Exception as e:
-                                        print(f"Erro ao ler {member}: {e}")
+                                        print(f"Erro {member}: {e}")
                 except Exception as e:
-                    print(f"Erro no zip {file}: {e}")
-
-def main():
-    extract_and_process()
+                    print(f"Erro zip {file}: {e}")
 
 if __name__ == "__main__":
     main()
