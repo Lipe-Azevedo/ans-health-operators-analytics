@@ -5,7 +5,7 @@ from datetime import datetime
 BASE_URL = "https://dadosabertos.ans.gov.br/FTP/PDA/demonstracoes_contabeis"
 OUTPUT_DIR = os.path.join("output", "raw_data")
 
-def download_last_quarters(limit=4):
+def download_last_quarters(limit=3):
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
         
