@@ -1,17 +1,18 @@
 import os
 import pandas as pd
-import zipfile
 
-STAGING_DIR = "staging_data"
+STAGING_DIR = os.path.join("output", "staging_data")
 OUTPUT_DIR = "output"
 OUTPUT_FILE = os.path.join(STAGING_DIR, "consolidado_despesas.csv")
 
 def process_consolidation():
-    if not os.path.exists(STAGING_DIR): return
+    if not os.path.exists(STAGING_DIR): 
+        return
     
     all_files = [os.path.join(STAGING_DIR, f) for f in os.listdir(STAGING_DIR) if f.endswith('.csv') and 'consolidado' not in f]
     
-    if not all_files: return
+    if not all_files: 
+        return
 
     df_list = []
     for f in all_files:

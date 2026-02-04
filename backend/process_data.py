@@ -4,8 +4,8 @@ import pandas as pd
 import shutil
 import io
 
-RAW_DIR = "raw_data"
-STAGING_DIR = "staging_data"
+RAW_DIR = os.path.join("output", "raw_data")
+STAGING_DIR = os.path.join("output", "staging_data")
 
 def setup_directories():
     if os.path.exists(STAGING_DIR):
@@ -40,6 +40,23 @@ def clean_currency(value):
     except:
         return 0.0
 
+def remove_contas_sinteticas(df):
+    if 'Conta' not in df.columns:
+        return df
+
+    df['Conta'] = df['Conta'].astype(str).str.strip()
+    
+    codigos = set(df['Conta'].unique())
+    pais = set()
+
+    for codigo in codigos:
+        for outro in codigos:
+            if outro != codigo and outro.startswith(codigo):
+                pais.add(codigo)
+                break
+    
+    return df[~df['Conta'].isin(pais)].copy()
+
 def transform_dataframe(df, relative_path):
     df.columns = [c.upper().strip() for c in df.columns]
     col_map = {
@@ -52,6 +69,8 @@ def transform_dataframe(df, relative_path):
     required = ['RegistroANS', 'Conta', 'ValorDespesas', 'Descricao']
     if not all(c in df.columns for c in required): return None
 
+    df = remove_contas_sinteticas(df)
+
     mask = df['Descricao'].astype(str).str.contains('EVENTO|SINISTRO|DESPESA|PROVIS', case=False, na=False)
     filtered = df[mask].copy()
     if filtered.empty: return None
@@ -61,9 +80,14 @@ def transform_dataframe(df, relative_path):
     if 'Trimestre' not in filtered.columns:
         parts = relative_path.split(os.sep)
         if len(parts) >= 3:
-            year, quarter = parts[-3], parts[-2]
-            q_map = {'Q1':'03-31', 'Q2':'06-30', 'Q3':'09-30', 'Q4':'12-31'}
-            filtered['Trimestre'] = f"{year}-{q_map.get(quarter, '01-01')}"
+            for i, part in enumerate(parts):
+                if part.isdigit() and len(part) == 4:
+                    year = part
+                    if i + 1 < len(parts):
+                        quarter = parts[i+1]
+                        q_map = {'Q1':'03-31', 'Q2':'06-30', 'Q3':'09-30', 'Q4':'12-31'}
+                        filtered['Trimestre'] = f"{year}-{q_map.get(quarter, '01-01')}"
+                        break
 
     return filtered[['RegistroANS', 'Conta', 'Descricao', 'ValorDespesas', 'Trimestre']]
 
@@ -90,6 +114,10 @@ def process_zip_member(z, member, root):
 def main():
     setup_directories()
     
+    if not os.path.exists(RAW_DIR):
+        print(f"Erro: Diretorio {RAW_DIR} nao encontrado.")
+        return
+
     for root, _, files in os.walk(RAW_DIR):
         for file in files:
             if file.endswith('.zip'):

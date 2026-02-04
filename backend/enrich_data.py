@@ -6,7 +6,7 @@ import sys
 import re
 
 BASE_DIR_URL = "https://dadosabertos.ans.gov.br/FTP/PDA/operadoras_de_plano_de_saude_ativas/"
-STAGING_DIR = "staging_data"
+STAGING_DIR = os.path.join("output", "staging_data")
 OUTPUT_DIR = "output"
 INPUT_FILE = os.path.join(STAGING_DIR, "consolidado_despesas.csv")
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "consolidado_despesas_enriquecido.csv")
